@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a84ff">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/000000/television.png">
+    <title>EPG Studio - Professional Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW Registered', reg))
+                    .catch(err => console.log('SW Error', err));
+            });
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0a0a0a;
+            --bg-card: #161618;
+            --accent: #0a84ff;
+            --border: #2c2c2e;
+            --text-dim: #a1a1a6;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: #ffffff;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: #2c2c2e; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a3c; }
+
+        .rating-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;
+            text-transform: uppercase;
+        }
+        .rating-AL, .rating-L { background: #2ecc71; color: white; }
+        .rating-6, .rating-A6 { background: #df338b; color: white; }
+        .rating-10, .rating-A10 { background: #3498db; color: white; }
+        .rating-12, .rating-A12 { background: #f1c40f; color: #000; }
+        .rating-14, .rating-A14 { background: #e67e22; color: white; }
+        .rating-16, .rating-A16 { background: #e74c3c; color: white; }
+        .rating-18, .rating-A18 { background: #000000; color: white; border: 1px solid #fff; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .channel-thumb { position: relative; transition: all 0.2s; border-width: 2px; }
+        .channel-thumb.active { border-color: var(--accent); background: rgba(10, 132, 255, 0.1); }
+        .view-btn.active { background: #3a3a3c; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        
+        .btn-del-channel {
+            position: absolute; top: -8px; right: -8px;
+            width: 22px; height: 22px; background: #ff453a;
+            color: white; border-radius: 50%; font-size: 14px;
+            display: none; align-items: center; justify-content: center;
+            z-index: 50; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            border: none; cursor: pointer;
+        }
+        .channel-thumb:hover .btn-del-channel { display: flex; }
+
+        .weekly-toolbar {
+            background-color: #111111;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .weekly-select {
+            background: #1c1c1e;
+            border: 1px solid #3a3a3c;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 200px;
+            outline: none;
+        }
+
+        .day-chip {
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid #3a3a3c;
+            font-size: 11px;
+            color: #a1a1a6;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .day-chip.active {
+            background: #0a84ff;
+            border-color: #0a84ff;
+            color: white;
+        }
+
+        .xml-warning {
+            display: none;
+            font-size: 10px;
+            color: #f1c40f;
+            background: rgba(241, 196, 15, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-top: 4px;
+            border: 1px solid rgba(241, 196, 15, 0.3);
+        }
+        .xml-warning.visible { display: block; }
+
+        #channelBar:not(.hidden) {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            padding-bottom: 12px;
+        }
+
+        .export-tab.active {
+            color: white;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .time-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #ff453a;
+            z-index: 50;
+            pointer-events: none;
+        }
+        .time-line::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -4px;
+            width: 10px;
+            height: 10px;
+            background: #ff453a;
+            border-radius: 50%;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="welcomeScreen" class="fixed inset-0 z-[3000] bg-[#0a0a0a] flex items-center justify-center p-6 hidden">
+        <div class="max-w-md w-full text-center space-y-8">
+            <div class="space-y-4">
+                <div class="w-24 h-24 bg-[#0a84ff] rounded-3xl shadow-[0_0_50px_rgba(10,132,255,0.3)] flex items-center justify-center text-5xl mx-auto mb-6 transform hover:scale-105 transition-transform">📺</div>
+                <h1 class="text-5xl font-black tracking-tighter text-white">EPG Make <span class="text-[#0a84ff]">Studio</span></h1>
+                <p class="text-zinc-500 text-sm leading-relaxed">Sua plataforma profissional de edição e gestão de guias de programação (XMLTV).</p>
+            </div>
+            
+            <div class="grid grid-cols-1 gap-3 pt-6">
+                <button onclick="window.startNewProject()" class="bg-[#0a84ff] hover:bg-[#0070e0] text-white font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3">
+                    <span class="text-xl">+</span> Criar Novo Projeto
+                </button>
+                <button onclick="document.getElementById('fileInput').click()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-bold py-4 rounded-2xl border border-zinc-800 transition-all active:scale-95 flex items-center justify-center gap-3">
+                    <span>📥</span> Importar Projeto
+                </button>
+            </div>
+            
+            <p class="text-[10px] text-zinc-600 uppercase tracking-[0.2em] font-bold">Versão 1.1</p>
+        </div>
+    </div>
+
+    <header id="appHeader" class="bg-black px-6 py-4 flex items-center gap-4 border-b border-[#2c2c2e] sticky top-0 z-[1000] hidden">
+        <div class="flex items-center gap-3 font-bold text-xl mr-6">
+            <span class="bg-[#0a84ff] text-white p-1.5 rounded-lg shadow-lg">📺</span>
+            <span>EPG Make Studio</span>
+        </div>
+        <button onclick="document.getElementById('fileInput').click()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors">📥 Importar XML</button>
+        <button onclick="window.openExportModal()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors">📤 Exportar</button>
+        <input type="file" id="fileInput" class="hidden" accept=".xml">
+
+        <div class="flex-1"></div>
+
+        <button onclick="window.openArchivedPanel()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2">
+            <span>📁</span> Arquivados
+        </button>
+
+        <div class="flex bg-[#1c1c1e] p-1 rounded-lg gap-1 border border-[#2c2c2e]">
+            <button onclick="window.setView('list')" id="btn-list" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e]">☰</button>
+            <button onclick="window.setView('grid')" id="btn-grid" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e] active">▦</button>
+            <button onclick="window.setView('weekly')" id="btn-weekly" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e]">📅</button>
+        </div>
+
+        <button onclick="window.openModal()" class="bg-[#0a84ff] hover:opacity-90 text-white font-bold px-4 py-2 rounded-lg text-sm transition-opacity">+ Novo Programa</button>
+    </header>
+
+    <div id="dayMenuBar" class="bg-[#111111] px-6 py-2 border-b border-[#2c2c2e] flex items-center gap-2 overflow-x-auto no-scrollbar"></div>
+
+    <div id="channelBar" class="items-center gap-4 p-4 bg-black border-b border-[#2c2c2e] hidden"></div>
+
+    <div id="weeklyToolbar" class="weekly-toolbar hidden">
+        <span class="text-sm font-medium text-[#a1a1a6]">Canal Visualizado:</span>
+        <select id="weeklyChannelSelect" class="weekly-select" onchange="window.selectChannel(this.value)"></select>
+        <div id="weeklyCurrentIcon" class="w-10 h-10 bg-[#1c1c1e] border border-[#3a3a3c] rounded flex items-center justify-center p-1"></div>
+        <button onclick="window.openEditChannelModal()" class="text-[#0a84ff] w-8 h-8 flex items-center justify-center rounded hover:bg-blue-500/10 transition-colors" title="Editar Canal">✎</button>
+        <button onclick="window.openChannelModal()" class="text-[#0a84ff] w-8 h-8 flex items-center justify-center rounded hover:bg-blue-500/10 transition-colors" title="Novo Canal">+</button>
+    </div>
+
+    <main id="mainContent" class="flex-grow min-h-[500px]"></main>
+
+    <!-- Painel de Arquivados -->
+    <div id="archivedPanelOverlay" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="bg-[#161618] w-full max-w-2xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="p-6 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span>📁</span> Programas Arquivados
+                    </h2>
+                    <p id="archivedPanelSubtitle" class="text-xs text-zinc-500 mt-1"></p>
+                </div>
+                <button onclick="window.closeArchivedPanel()" class="text-zinc-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div id="archivedListContainer" class="p-6 overflow-y-auto flex-grow space-y-3 no-scrollbar bg-black/20">
+                <!-- Lista de arquivados aqui -->
+            </div>
+            <div class="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end">
+                <button onclick="window.closeArchivedPanel()" class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-bold transition">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Exportação -->
+    <div id="exportModalOverlay" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="bg-zinc-900 w-full max-w-md rounded-lg shadow-2xl border border-zinc-700 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="flex items-center justify-between p-4 border-b border-zinc-700 bg-zinc-950">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Exportar EPG
+                </h2>
+                <button onclick="window.closeExportModal()" class="text-zinc-400 hover:text-white transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+
+            <div class="flex border-b border-zinc-700 bg-zinc-900">
+                <button onclick="window.setExportTab('project')" id="tab-project" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300">
+                    <span class="flex items-center justify-center gap-2">📁 Projeto</span>
+                </button>
+                <button onclick="window.setExportTab('master')" id="tab-master" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300 active">
+                    <span class="flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        Arquivo Master
+                    </span>
+                </button>
+                <button onclick="window.setExportTab('normal')" id="tab-normal" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300">
+                    <span class="flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        EPG Normal
+                    </span>
+                </button>
+            </div>
+            
+            <div id="exportContentProject" class="p-6 hidden overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                <div class="space-y-6">
+                    <div class="bg-blue-900/10 border border-blue-900/30 p-4 rounded-xl space-y-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-blue-400">Configuração do Projeto</h3>
+                            <span class="text-[9px] px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full font-mono uppercase">Master</span>
+                        </div>
+                        <p class="text-[11px] text-zinc-500 leading-relaxed">
+                            O nome do projeto será salvo dentro do XML Master e usado como nome de arquivo padrão.
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Nome do Projeto</label>
+                            <input type="text" id="projNameInput" oninput="window.updateProjectName(this.value)" placeholder="ex: Minha Grade" class="w-full bg-[#1c1c1e] border border-zinc-800 rounded-lg px-4 py-2 outline-none focus:border-[#0a84ff] text-white">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Última Modificação</label>
+                            <div id="projDateDisplay" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-xs font-mono text-zinc-500">
+                                ---
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 pt-6 border-t border-zinc-800">
+                        <button onclick="window.saveProject()" class="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-500/20">
+                            <span>💾</span> Salvar
+                        </button>
+                        <button onclick="window.saveProjectAs()" class="bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm">
+                            <span>📂</span> Salvar como...
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="exportContentMaster" class="p-6 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                <div class="space-y-6">
+                    <div class="bg-blue-900/20 border border-blue-900/50 p-4 rounded text-sm text-blue-200">
+                        <p class="font-bold mb-1">Formato de Projeto (Backup)</p>
+                        <p class="opacity-80">
+                            Salva todos os dados originais, incluindo regras de dias da semana e variações diárias. Ideal para backups.
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Avançado</h4>
+                            <div class="h-px flex-1 bg-zinc-800 mx-4"></div>
+                        </div>
+                        
+                        <div class="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+                            <div class="p-3 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-zinc-400 uppercase">Selecionar Canais</span>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="exportAllMaster" checked onchange="window.toggleExportMasterChannels(this.checked)" class="w-3 h-3 rounded bg-zinc-800 border-zinc-700 text-[#0a84ff] focus:ring-0">
+                                    <span class="text-[10px] text-zinc-400">Todos</span>
+                                </label>
+                            </div>
+                            <div id="exportMasterChannelsList" class="p-4 grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                <!-- Canais via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="exportContentNormal" class="p-6 hidden overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                <div class="space-y-6">
+                    <div class="bg-green-900/20 border border-green-900/50 p-4 rounded text-sm text-green-200">
+                        <p class="font-bold mb-1">Formato XMLTV Padrão</p>
+                        <p class="opacity-80">
+                            Gera um arquivo XML final compatível com players de IPTV/EPG. 
+                            Converte as regras semanais em datas reais do calendário.
+                        </p>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-500 uppercase mb-2">
+                                Gerar grade para quantos dias?
+                            </label>
+                            <div class="flex items-center gap-3">
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="30" 
+                                    value="7"
+                                    id="exportDaysInput"
+                                    oninput="window.updateExportDays(this.value)"
+                                    onwheel="window.handleExportDaysWheel(event)"
+                                    class="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 outline-none focus:border-blue-500 text-white font-bold"
+                                >
+                                <span class="text-xs text-zinc-500">Dias (Máx: 30)</span>
+                            </div>
+                            <p id="exportStartDate" class="text-[10px] text-zinc-500 mt-2 font-mono uppercase tracking-wider">
+                                Início: Carregando...
+                            </p>
+                        </div>
+
+                        <div class="pt-4 border-t border-zinc-800 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Avançado</h4>
+                            </div>
+
+                            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-sm text-zinc-300 cursor-pointer" for="mergeSubtitleCheck">
+                                        Mesclar subtítulo ao título principal
+                                    </label>
+                                    <input type="checkbox" id="mergeSubtitleCheck" onchange="window.updateExportOptions()" class="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-blue-500 focus:ring-0">
+                                </div>
+
+                                <div id="subtitleSeparatorGroup" class="space-y-2 opacity-50 pointer-events-none transition-opacity">
+                                    <label class="text-[10px] font-bold text-zinc-500 uppercase block">Separador</label>
+                                    <select id="subtitleSeparator" onchange="window.updateExportOptions()" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                                        <option value=" - ">Título - Subtítulo</option>
+                                        <option value=": ">Título: Subtítulo</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-zinc-700 bg-zinc-950 flex justify-end gap-3">
+                <button onclick="window.closeExportModal()" class="px-4 py-2 text-zinc-300 hover:text-white transition text-sm">
+                    Cancelar
+                </button>
+                <button 
+                    onclick="window.handleExportDownload()"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium shadow-lg shadow-blue-900/20 flex items-center gap-2 transition"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Baixar Arquivo XML
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Edição Programa -->
+    <!-- Overlay fixo: Agora não fecha ao clicar fora, forçando a ação nos botões internos -->
+    <div id="modalOverlay" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm shadow-inner">
+        <div class="bg-[#161618] w-full max-w-lg rounded-2xl border border-[#0a84ff] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header Fixo -->
+            <div class="p-6 border-b border-[#2c2c2e] bg-zinc-900 flex items-center gap-4">
+                <h2 id="modalTitle" class="text-xl font-bold text-[#0a84ff] flex-1">Programa</h2>
+                <div class="flex items-center gap-2">
+                    <button id="btnDelete" onclick="window.handleDeleteProgram()" class="bg-[#ff453a]/10 hover:bg-[#ff453a] text-[#ff453a] hover:text-white border border-[#ff453a]/20 font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all flex items-center gap-1 hidden uppercase">
+                        Excluir
+                    </button>
+                    <button id="btnArchive" onclick="window.handleArchiveProgram()" class="bg-zinc-800 hover:bg-zinc-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] border border-zinc-700 transition-all flex items-center gap-1 hidden uppercase">
+                        Arquivar
+                    </button>
+                    <button onclick="window.closeModal()" class="text-zinc-500 hover:text-white transition-colors text-2xl ml-2">×</button>
+                </div>
+            </div>
+            
+            <div class="px-6 py-4 bg-[#1a1a1c] border-b border-[#2c2c2e]">
+                <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Título do Programa</label>
+                <input type="text" id="fTitle" oninput="window.checkXml(this)" class="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-lg px-3 py-2 outline-none focus:border-[#0a84ff] text-sm" placeholder="Nome da Atração">
+                <div class="xml-warning" id="warn-fTitle">Erro XML</div>
+            </div>
+
+            <!-- Abas do Modal -->
+            <div class="flex border-b border-[#2c2c2e] bg-[#1a1a1c]">
+                <button onclick="window.setModalTab('general')" id="tabBtn-general" class="flex-1 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-[#0a84ff] text-white transition-all">Geral</button>
+                <button onclick="window.setModalTab('daily')" id="tabBtn-daily" class="flex-1 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-zinc-500 hover:text-zinc-300 transition-all">Variações Diárias</button>
+            </div>
+
+            <!-- Área de Conteúdo Scrollable -->
+            <div class="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                <!-- Aba 1: Geral -->
+                <div id="tabContent-general" class="space-y-6">
+                    <input type="hidden" id="editId">
+                    <input type="hidden" id="editIsArchived">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Sub-título Padrão</label>
+                            <input type="text" id="fSubTitle" oninput="window.checkXml(this)" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 outline-none focus:border-[#0a84ff] text-sm" placeholder="Ex: Nome do episódio">
+                            <div class="xml-warning" id="warn-fSubTitle">Erro XML</div>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Canal</label>
+                            <select id="fChannel" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 text-sm outline-none focus:border-[#0a84ff]"></select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Descrição Padrão</label>
+                        <textarea id="fDesc" oninput="window.checkXml(this)" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 outline-none focus:border-[#0a84ff] text-sm h-24 resize-none"></textarea>
+                        <div class="xml-warning" id="warn-fDesc">Erro XML</div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Início</label>
+                            <input type="time" id="fStartTime" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Fim</label>
+                            <input type="time" id="fStopTime" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-semibold text-[#a1a1a6] mb-2 block">Dias de Exibição</label>
+                        <div id="daysContainer" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">Classificação</label>
+                            <select id="fRating" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 text-sm outline-none focus:border-[#0a84ff]">
+                                <optgroup label="Padrão">
+                                    <option value="L">Livre</option>
+                                    <option value="6">6 anos</option>
+                                    <option value="10">10 anos</option>
+                                    <option value="12">12 anos</option>
+                                    <option value="14">14 anos</option>
+                                    <option value="16">16 anos</option>
+                                    <option value="18">18 anos</option>
+                                </optgroup>
+                                <optgroup label="Auto Classificação">
+                                    <option value="AL">AL (Auto Livre)</option>
+                                    <option value="A6">A6 (Auto 6 anos)</option>
+                                    <option value="A10">A10 (Auto 10 anos)</option>
+                                    <option value="A12">A12 (Auto 12 anos)</option>
+                                    <option value="A14">A14 (Auto 14 anos)</option>
+                                    <option value="A16">A16 (Auto 16 anos)</option>
+                                    <option value="A18">A18 (Auto 18 anos)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#a1a1a6] mb-1 block">URL Imagem</label>
+                            <input type="text" id="fIconSrc" oninput="window.updatePreview(this.value); window.checkXml(this)" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-2 text-sm">
+                            <div class="xml-warning" id="warn-fIconSrc">Erro XML</div>
+                        </div>
+                    </div>
+                    <div id="imagePreview" class="w-full aspect-video bg-black rounded-lg border border-[#2c2c2e] flex items-center justify-center overflow-hidden"></div>
+                </div>
+
+                <!-- Aba 2: Variações Diárias -->
+                <div id="tabContent-daily" class="hidden space-y-4">
+                    <div class="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl">
+                        <p class="text-[11px] text-blue-400 leading-relaxed italic">
+                            Configure informações específicas para cada dia. Se deixado vazio, o sistema usará os valores padrão da aba anterior.
+                        </p>
+                    </div>
+                    <div id="dailyFieldsContainer" class="space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- Rodapé Fixo -->
+            <div class="p-6 border-t border-[#2c2c2e] bg-[#1a1a1c] flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                    <button onclick="window.copyProgramData()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-xs border border-zinc-700 flex items-center gap-2 transition-all">
+                        <span>📄</span> Copiar
+                    </button>
+                    <button onclick="window.pasteProgramData()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-xs border border-zinc-700 flex items-center gap-2 transition-all">
+                        <span>📋</span> Colar
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                    <button onclick="window.closeModal()" class="text-zinc-500 hover:text-white px-4 py-2 text-xs font-bold transition-colors">
+                        Cancelar
+                    </button>
+                    <button onclick="window.saveChanges()" class="bg-[#0a84ff] hover:bg-[#0070e0] text-white font-bold px-8 py-2 rounded-xl text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+                        Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalChannelOverlay" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"></div>
+    <div id="confirmOverlay" class="fixed inset-0 z-[3000] hidden flex items-center justify-center p-4 bg-black/90">
+        <div class="bg-[#161618] p-6 rounded-2xl border border-red-500 max-w-sm w-full text-center">
+            <h3 id="confirmTitle" class="text-lg font-bold mb-2"></h3>
+            <p id="confirmMessage" class="text-zinc-400 text-sm mb-6"></p>
+            <div class="flex gap-2">
+                <button id="confirmYes" class="flex-1 bg-red-600 py-2 rounded-lg font-bold">Sim</button>
+                <button id="confirmNo" class="flex-1 bg-zinc-800 py-2 rounded-lg">Não</button>
+            </div>
+        </div>
+    </div>
+    <div id="alertOverlay" class="fixed inset-0 z-[4000] hidden flex items-center justify-center p-4 bg-black/90"></div>
+
+    <!-- Modal Salvar Como -->
+    <div id="modalSaveAsOverlay" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[2100] flex items-center justify-center p-4 hidden">
+        <div class="bg-[#161618] w-full max-w-sm rounded-2xl border border-[#0a84ff] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#2c2c2e] bg-zinc-900 flex items-center justify-between">
+                <h2 class="text-xl font-bold text-[#0a84ff]">Salvar Projeto Como</h2>
+                <button onclick="window.closeSaveAsModal()" class="text-zinc-500 hover:text-white transition-colors text-2xl">×</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-zinc-500 uppercase mb-1 block">Novo Nome do Projeto</label>
+                    <input type="text" id="saveAsNameInput" placeholder="ex: Minha Nova Grade" class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-lg px-4 py-3 outline-none focus:border-[#0a84ff] text-white text-sm">
+                </div>
+                <p class="text-[10px] text-zinc-500 italic leading-tight">
+                    * Devido a restrições de segurança do preview, o arquivo será baixado para sua pasta de Downloads. Para salvamento nativo direto no local original, abra o app em uma nova aba.
+                </p>
+            </div>
+            <div class="p-6 border-t border-[#2c2c2e] bg-[#1a1a1c] flex items-center gap-3">
+                <button onclick="window.closeSaveAsModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold transition-all text-sm">Cancelar</button>
+                <button onclick="window.confirmSaveAs()" class="flex-1 bg-[#0a84ff] hover:bg-[#0070e0] text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 text-sm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
