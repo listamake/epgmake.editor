@@ -3,18 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <meta name="theme-color" content="#0a84ff">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/000000/television.png">
-    <title>EPG Make Studio - Editor de Guias para Lista Make</title>
+    <title>EPG Studio Professional</title>
     <link rel="icon" type="image/png" href="icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // Limpeza agressiva de qualquer cache antigo de Service Worker para atualizar imediatamente
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('SW Registered', reg))
-                    .catch(err => console.log('SW Error', err));
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for (var i = 0; i < registrations.length; i++) {
+                    registrations[i].unregister();
+                }
+            });
+        }
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (var i = 0; i < names.length; i++) {
+                    caches.delete(names[i]);
+                }
             });
         }
     </script>
@@ -147,6 +158,69 @@
             background: #ff453a;
             border-radius: 50%;
         }
+
+        #mobileFab {
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 3.5rem;
+            height: 3.5rem;
+        }
+
+        .export-tab {
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+        }
+        .export-tab.active {
+            color: #ffffff !important;
+            background-color: rgba(10, 132, 255, 0.15) !important;
+            border-bottom: 2px solid #0a84ff !important;
+        }
+
+        /* Ajustes para telas muito pequenas < 500px */
+        @media only screen and (max-width: 500px) {
+            header#appHeader {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+                gap: 0.25rem;
+            }
+            header#appHeader .font-bold.text-lg {
+                font-size: 0.9rem;
+                margin-right: 0;
+            }
+            .view-btn {
+                padding: 0.25rem !important;
+            }
+            #dayMenuBar {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            #mobileFab {
+                bottom: 1.5rem;
+                right: 1.5rem;
+                width: 3.5rem;
+                height: 3.5rem;
+            }
+            /* Botões do header menores */
+            header#appHeader button {
+                padding: 0.4rem !important;
+                font-size: 0.75rem !important;
+            }
+            /* Chips de dias menores */
+            .day-chip {
+                padding: 3px 10px;
+                font-size: 10px;
+            }
+            #dayMenuBar {
+                gap: 0.5rem;
+            }
+            /* Modal ajustes */
+            #modalTitle {
+                font-size: 1.1rem;
+            }
+            .p-6 {
+                padding: 1rem !important;
+            }
+        }
     </style>
 <script type="importmap">
 {
@@ -180,28 +254,39 @@
         </div>
     </div>
 
-    <header id="appHeader" class="bg-black px-6 py-4 flex items-center gap-4 border-b border-[#2c2c2e] sticky top-0 z-[1000] hidden">
-        <div class="flex items-center gap-3 font-bold text-xl mr-6">
+    <header id="appHeader" class="bg-black px-4 md:px-6 py-3 md:py-4 flex items-center gap-2 md:gap-4 border-b border-[#2c2c2e] sticky top-0 z-[1000] hidden">
+        <div class="flex items-center gap-2 md:gap-3 font-bold text-lg md:text-xl md:mr-6">
             <span class="bg-[#0a84ff] text-white p-1.5 rounded-lg shadow-lg">📺</span>
-            <span>EPG Make Studio</span>
+            <span class="hidden md:block">EPG Make Studio</span>
+            <span class="md:hidden">EPG Make</span>
         </div>
-        <button onclick="document.getElementById('fileInput').click()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors">📥 Importar XML</button>
-        <button onclick="window.openExportModal()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors">📤 Exportar</button>
+        
+        <div class="flex items-center gap-1 md:gap-2">
+            <button onclick="document.getElementById('fileInput').click()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] p-2 md:px-4 md:py-2 rounded-lg text-sm transition-colors" title="Importar XML">
+                <span>📥</span> <span class="hidden md:inline">Importar XML</span>
+            </button>
+            <button onclick="window.openExportModal()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] p-2 md:px-4 md:py-2 rounded-lg text-sm transition-colors" title="Exportar">
+                <span>📤</span> <span class="hidden md:inline">Exportar</span>
+            </button>
+        </div>
+
         <input type="file" id="fileInput" class="hidden" accept=".xml">
 
         <div class="flex-1"></div>
 
-        <button onclick="window.openArchivedPanel()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2">
-            <span>📁</span> Arquivados
-        </button>
+        <div class="flex items-center gap-1 md:gap-2">
+            <button onclick="window.openArchivedPanel()" class="bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-[#2c2c2e] p-2 md:px-4 md:py-2 rounded-lg text-sm transition-colors flex items-center gap-2" title="Arquivados">
+                <span>📁</span> <span class="hidden md:inline">Arquivados</span>
+            </button>
 
-        <div class="flex bg-[#1c1c1e] p-1 rounded-lg gap-1 border border-[#2c2c2e]">
-            <button onclick="window.setView('list')" id="btn-list" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e]">☰</button>
-            <button onclick="window.setView('grid')" id="btn-grid" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e] active">▦</button>
-            <button onclick="window.setView('weekly')" id="btn-weekly" class="view-btn p-2 rounded-md hover:bg-[#2c2c2e]">📅</button>
+            <div class="flex bg-[#1c1c1e] p-1 rounded-lg gap-1 border border-[#2c2c2e]">
+                <button onclick="window.setView('list')" id="btn-list" class="view-btn p-1.5 md:p-2 rounded-md hover:bg-[#2c2c2e]">☰</button>
+                <button onclick="window.setView('grid')" id="btn-grid" class="view-btn p-1.5 md:p-2 rounded-md hover:bg-[#2c2c2e] active">▦</button>
+                <button onclick="window.setView('weekly')" id="btn-weekly" class="view-btn p-1.5 md:p-2 rounded-md hover:bg-[#2c2c2e]">📅</button>
+            </div>
+
+            <button onclick="window.openModal()" class="hidden md:block bg-[#0a84ff] hover:opacity-90 text-white font-bold px-4 py-2 rounded-lg text-sm transition-opacity">+ Novo Programa</button>
         </div>
-
-        <button onclick="window.openModal()" class="bg-[#0a84ff] hover:opacity-90 text-white font-bold px-4 py-2 rounded-lg text-sm transition-opacity">+ Novo Programa</button>
     </header>
 
     <div id="dayMenuBar" class="bg-[#111111] px-6 py-2 border-b border-[#2c2c2e] flex items-center gap-2 overflow-x-auto no-scrollbar"></div>
@@ -243,7 +328,7 @@
 
     <!-- Modal Exportação -->
     <div id="exportModalOverlay" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-        <div class="bg-zinc-900 w-full max-w-md rounded-lg shadow-2xl border border-zinc-700 overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="bg-zinc-900 w-full max-w-xl rounded-lg shadow-2xl border border-zinc-700 overflow-hidden flex flex-col max-h-[90vh]">
             <div class="flex items-center justify-between p-4 border-b border-zinc-700 bg-zinc-950">
                 <h2 class="text-lg font-bold text-white flex items-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
@@ -254,21 +339,23 @@
                 </button>
             </div>
 
-            <div class="flex border-b border-zinc-700 bg-zinc-900">
-                <button onclick="window.setExportTab('project')" id="tab-project" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300">
-                    <span class="flex items-center justify-center gap-2">📁 Projeto</span>
+            <!-- Navegação das 4 abas sempre 100% visíveis em 4 colunas -->
+            <div class="grid grid-cols-4 border-b border-zinc-700 bg-zinc-900 divide-x divide-zinc-800">
+                <button onclick="window.setExportTab('project')" id="tab-project" class="export-tab py-2.5 sm:py-3 px-1 text-center transition-all relative text-zinc-400 hover:text-white flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <span class="text-sm sm:text-base">📁</span>
+                    <span class="text-[11px] sm:text-xs font-semibold truncate">Projeto</span>
                 </button>
-                <button onclick="window.setExportTab('master')" id="tab-master" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300 active">
-                    <span class="flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                        Arquivo Master
-                    </span>
+                <button onclick="window.setExportTab('master')" id="tab-master" class="export-tab py-2.5 sm:py-3 px-1 text-center transition-all relative text-zinc-400 hover:text-white flex flex-col sm:flex-row items-center justify-center gap-1 active">
+                    <span class="text-sm sm:text-base">⚡</span>
+                    <span class="text-[11px] sm:text-xs font-semibold truncate">Master</span>
                 </button>
-                <button onclick="window.setExportTab('normal')" id="tab-normal" class="export-tab flex-1 py-3 text-sm font-medium transition-colors relative text-zinc-500 hover:text-zinc-300">
-                    <span class="flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        EPG Normal
-                    </span>
+                <button onclick="window.setExportTab('normal')" id="tab-normal" class="export-tab py-2.5 sm:py-3 px-1 text-center transition-all relative text-zinc-400 hover:text-white flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <span class="text-sm sm:text-base">📅</span>
+                    <span class="text-[11px] sm:text-xs font-semibold truncate">Normal</span>
+                </button>
+                <button onclick="window.setExportTab('others')" id="tab-others" class="export-tab py-2.5 sm:py-3 px-1 text-center transition-all relative text-zinc-400 hover:text-white flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <span class="text-sm sm:text-base">📺</span>
+                    <span class="text-[11px] sm:text-xs font-semibold truncate">Outros</span>
                 </button>
             </div>
             
@@ -398,6 +485,72 @@
                 </div>
             </div>
 
+            <div id="exportContentOthers" class="p-6 hidden overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                <div class="space-y-5">
+                    <div class="bg-blue-900/20 border border-blue-800/60 p-4 rounded-xl text-sm text-blue-200">
+                        <div class="flex items-center gap-2 font-bold mb-1 text-white">
+                            <span class="text-base">📺</span> Formato XTTV — 1 Canal por Arquivo XML
+                        </div>
+                        <p class="text-xs text-blue-300/80 leading-relaxed">
+                            O formato XTTV gera a programação semanal completa (de domingo a sábado) para <strong>um canal específico por vez</strong>.
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 uppercase mb-2">
+                                Formato
+                            </label>
+                            <select id="exportOthersFormat" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none text-white focus:border-blue-500">
+                                <option value="xttv" selected>Formato XTTV (&lt;programacao&gt; — Grade Semanal)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 uppercase mb-2">
+                                Canal Selecionado (1 canal por vez)
+                            </label>
+                            <select id="exportOthersChannel" onchange="window.updateExportOthersPreview()" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none text-white focus:border-blue-500">
+                                <!-- Opções de canais preenchidas via JS -->
+                            </select>
+                            <div id="exportOthersChannelInfo" class="mt-2 flex items-center justify-between text-xs text-zinc-400 bg-zinc-950/60 px-3 py-2 rounded-lg border border-zinc-800">
+                                <span id="exportOthersChannelSummary">Carregando...</span>
+                                <span class="text-[11px] text-blue-400 font-mono">Semana Atual</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="text-sm text-zinc-300 cursor-pointer" for="mergeSubtitleCheckXTTV">
+                                    Mesclar subtítulo ao título da atração
+                                </label>
+                                <input type="checkbox" id="mergeSubtitleCheckXTTV" onchange="window.updateExportOthersPreview()" class="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-blue-500 focus:ring-0">
+                            </div>
+                            <p class="text-[11px] text-zinc-500">
+                                Exemplo: "Programa - Episódio ou Subtítulo"
+                            </p>
+                        </div>
+
+                        <!-- Pré-visualização do XML gerado para o canal selecionado -->
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preview do Arquivo XTTV</span>
+                                <span id="exportOthersFileNameBadge" class="text-[10px] text-blue-400 font-mono">canal-xttv.xml</span>
+                            </div>
+                            <pre id="exportOthersPreviewXml" class="bg-zinc-950 p-3 rounded-lg border border-zinc-800 font-mono text-[11px] text-zinc-300 max-h-48 overflow-y-auto overflow-x-auto custom-scrollbar leading-relaxed whitespace-pre"></pre>
+                        </div>
+
+                        <!-- Botão extra para exportar todos os canais individualmente (1 arquivo por canal) -->
+                        <div id="exportAllXTTVContainer" class="pt-2 border-t border-zinc-800 hidden">
+                            <button onclick="window.downloadAllXTTV()" type="button" class="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 border border-zinc-700 transition">
+                                <span>📦</span> Baixar Todos os Canais (Arquivos XTTV Individuais)
+                            </button>
+                            <p class="text-[10px] text-zinc-500 text-center mt-1">Gera e baixa um arquivo XML separado para cada canal cadastrado.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="p-4 border-t border-zinc-700 bg-zinc-950 flex justify-end gap-3">
                 <button onclick="window.closeExportModal()" class="px-4 py-2 text-zinc-300 hover:text-white transition text-sm">
                     Cancelar
@@ -407,7 +560,7 @@
                     class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium shadow-lg shadow-blue-900/20 flex items-center gap-2 transition"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                    Baixar Arquivo XML
+                    <span id="exportDownloadBtnText">Baixar Arquivo XML</span>
                 </button>
             </div>
         </div>
@@ -588,7 +741,12 @@
         </div>
     </div>
 
-    <script src="index.js"></script>
-<script type="module" src="/index.tsx"></script>
+    <!-- FAB para mobile -->
+    <button id="mobileFab" onclick="window.openModal()" class="fixed bg-[#0a84ff] text-white rounded-full shadow-2xl flex items-center justify-center text-3xl z-[1500] hover:scale-110 active:scale-95 transition-all" style="display: none;">
+        +
+    </button>
+
+    <script src="index.js?v=2.2"></script>
+    
 </body>
 </html>
