@@ -858,10 +858,13 @@ window.startNewProject = function() {
     channels = [];
     programmes = [];
     selectedChannelId = "";
-    currentDay = 'mon';
-    currentView = 'list';
+    projectName = "Novo Projeto";
+    projectLastUpdate = "";
+    currentDay = 'seg';
+    currentView = 'grid';
     const welcome = document.getElementById("welcomeScreen");
     if (welcome) welcome.setAttribute('data-started', 'true');
+    saveCurrentState();
     render();
 };
 
@@ -880,6 +883,8 @@ function render() {
     if (!hasData && !wasStarted) {
         if (welcome) welcome.classList.remove("hidden");
         if (appHeader) appHeader.classList.add("hidden");
+        const mobileFab = document.getElementById("mobileFab");
+        if (mobileFab) mobileFab.style.display = "none";
         if (channelBar) channelBar.classList.add("hidden");
         if (dayMenuBar) dayMenuBar.classList.add("hidden");
         if (weeklyToolbar) weeklyToolbar.classList.add("hidden");
@@ -887,6 +892,20 @@ function render() {
     } else {
         if (welcome) welcome.classList.add("hidden");
         if (appHeader) appHeader.classList.remove("hidden");
+        const mobileFab = document.getElementById("mobileFab");
+        if (mobileFab) {
+            // Só mostra se for tela pequena (simulando md:hidden via JS para maior controle)
+            if (window.innerWidth < 768) {
+                mobileFab.style.display = "flex";
+            } else {
+                mobileFab.style.display = "none";
+            }
+        }
+    }
+
+    // Persistência automática do estado para evitar perda de dados no recarregamento
+    if (isStorageLoaded) {
+        scheduleSaveCurrentState();
     }
 
     if (!content) return;
@@ -942,6 +961,7 @@ window.openExportModal = function() {
     window.setExportTab(exportActiveTab);
     window.updateExportDays(exportDaysToGenerate);
     renderExportChannelList();
+    renderExportOthersChannelList();
 
     // Sincroniza opções de subtítulo
     const mergeCheck = document.getElementById('mergeSubtitleCheck');
@@ -959,6 +979,7 @@ window.openExportModal = function() {
 
 window.updateProjectName = function(val) {
     projectName = val || "Sem Nome";
+    scheduleSaveCurrentState();
 };
 
 window.saveProject = function() {
@@ -1092,6 +1113,111 @@ function renderExportChannelList() {
     });
 }
 
+function renderExportOthersChannelList() {
+    const select = document.getElementById('exportOthersChannel');
+    if (!select) return;
+    select.innerHTML = "";
+
+    if (channels.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.textContent = "Nenhum canal cadastrado";
+        select.appendChild(opt);
+        window.updateExportOthersPreview();
+        return;
+    }
+
+    channels.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.textContent = ch.displayName || ch.id;
+        if (ch.id === selectedChannelId) {
+            opt.selected = true;
+        }
+        select.appendChild(opt);
+    });
+
+    // Mostra opção de exportar todos se houver múltiplos canais
+    const allContainer = document.getElementById('exportAllXTTVContainer');
+    if (allContainer) {
+        if (channels.length > 1) {
+            allContainer.classList.remove('hidden');
+        } else {
+            allContainer.classList.add('hidden');
+        }
+    }
+
+    window.updateExportOthersPreview();
+}
+
+window.updateExportOthersPreview = function() {
+    const select = document.getElementById('exportOthersChannel');
+    const targetChannelId = select ? select.value : selectedChannelId;
+    const channel = channels.find(c => c.id === targetChannelId) || channels[0];
+
+    const summaryEl = document.getElementById('exportOthersChannelSummary');
+    const badgeEl = document.getElementById('exportOthersFileNameBadge');
+    const previewEl = document.getElementById('exportOthersPreviewXml');
+    const downloadBtnText = document.getElementById('exportDownloadBtnText');
+
+    if (!channel) {
+        if (summaryEl) summaryEl.textContent = "Nenhum canal selecionado";
+        if (previewEl) previewEl.textContent = "<!-- Nenhum canal disponível para gerar a grade XTTV -->";
+        return;
+    }
+
+    // Calcula total de programas semanais para esse canal
+    const weeklyCount = programmes.filter(p => 
+        !p.isArchived && 
+        p.channelId === channel.id && 
+        p.days && p.days.length > 0
+    ).length;
+
+    if (summaryEl) {
+        summaryEl.innerHTML = `<strong>${channel.displayName}</strong>: ${weeklyCount} atração(ões) na semana`;
+    }
+
+    const safeChannelName = (channel.displayName || channel.id).replace(/[^a-z0-9]/gi, '-');
+    if (badgeEl) {
+        badgeEl.textContent = `${safeChannelName}-xttv.xml`;
+    }
+
+    // Gera o XML do canal atual e exibe no preview
+    const xml = generateXTTVXML(channel.id);
+    if (previewEl) {
+        previewEl.textContent = xml;
+    }
+
+    if (exportActiveTab === 'others' && downloadBtnText) {
+        downloadBtnText.textContent = `Baixar XTTV (${channel.displayName})`;
+    }
+};
+
+window.downloadAllXTTV = function() {
+    if (channels.length === 0) return window.customAlert("Nenhum canal cadastrado.");
+
+    let downloaded = 0;
+    channels.forEach((ch, idx) => {
+        setTimeout(() => {
+            const xml = generateXTTVXML(ch.id);
+            const safeName = (ch.displayName || ch.id).replace(/[^a-z0-9]/gi, '-');
+            const blob = new Blob([xml], { type: "application/xml" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${safeName}-xttv.xml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            downloaded++;
+            if (downloaded === channels.length) {
+                window.customAlert(`Concluído! ${downloaded} arquivo(s) XTTV gerados individualmente.`);
+            }
+        }, idx * 300);
+    });
+};
+
 window.closeExportModal = () => {
     const overlay = document.getElementById('exportModalOverlay');
     if (overlay) {
@@ -1103,23 +1229,49 @@ window.closeExportModal = () => {
 window.setExportTab = function(tab) {
     exportActiveTab = tab;
     document.querySelectorAll('.export-tab').forEach(t => {
-        t.classList.remove('text-blue-500', 'active');
-        t.classList.add('text-zinc-500');
+        t.classList.remove('active', 'text-white');
+        t.classList.add('text-zinc-400');
     });
     
     const activeBtn = document.getElementById(`tab-${tab}`);
     if (activeBtn) {
-        activeBtn.classList.add('text-blue-500', 'active');
-        activeBtn.classList.remove('text-zinc-500');
+        activeBtn.classList.add('active', 'text-white');
+        activeBtn.classList.remove('text-zinc-400');
     }
 
-    document.getElementById('exportContentMaster').classList.add('hidden');
-    document.getElementById('exportContentNormal').classList.add('hidden');
-    document.getElementById('exportContentProject').classList.add('hidden');
+    const contentMaster = document.getElementById('exportContentMaster');
+    const contentNormal = document.getElementById('exportContentNormal');
+    const contentProject = document.getElementById('exportContentProject');
+    const contentOthers = document.getElementById('exportContentOthers');
+
+    if (contentMaster) contentMaster.classList.add('hidden');
+    if (contentNormal) contentNormal.classList.add('hidden');
+    if (contentProject) contentProject.classList.add('hidden');
+    if (contentOthers) contentOthers.classList.add('hidden');
     
-    if (tab === 'master') document.getElementById('exportContentMaster').classList.remove('hidden');
-    if (tab === 'normal') document.getElementById('exportContentNormal').classList.remove('hidden');
-    if (tab === 'project') document.getElementById('exportContentProject').classList.remove('hidden');
+    if (tab === 'master' && contentMaster) contentMaster.classList.remove('hidden');
+    if (tab === 'normal' && contentNormal) contentNormal.classList.remove('hidden');
+    if (tab === 'project' && contentProject) contentProject.classList.remove('hidden');
+    if (tab === 'others' && contentOthers) {
+        contentOthers.classList.remove('hidden');
+        renderExportOthersChannelList();
+    }
+
+    // Atualiza texto do botão principal de download
+    const downloadBtnText = document.getElementById('exportDownloadBtnText');
+    if (downloadBtnText) {
+        if (tab === 'master') {
+            downloadBtnText.textContent = "Baixar Arquivo Master";
+        } else if (tab === 'normal') {
+            downloadBtnText.textContent = `Baixar EPG (${exportDaysToGenerate} dias)`;
+        } else if (tab === 'project') {
+            downloadBtnText.textContent = "Baixar Projeto XML";
+        } else if (tab === 'others') {
+            const select = document.getElementById('exportOthersChannel');
+            const targetCh = channels.find(c => c.id === (select ? select.value : selectedChannelId)) || channels[0];
+            downloadBtnText.textContent = `Baixar XTTV (${targetCh ? targetCh.displayName : 'Canal'})`;
+        }
+    }
 };
 
 window.updateExportDays = function(val) {
@@ -1283,6 +1435,86 @@ function generateStandardXML(days) {
     return xml;
 }
 
+// Gerador de XML Formato XTTV (Grade Semanal de Domingo a Sábado)
+function generateXTTVXML(channelId) {
+    const channel = channels.find(c => c.id === channelId) || channels[0];
+    const channelName = channel ? channel.displayName : "Canal";
+    
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<!-- Grade semanal de ${channelName} -->\n`;
+    xml += `<programacao>\n`;
+
+    const XTTV_DAYS = [
+        { key: 'dom', name: 'domingo' },
+        { key: 'seg', name: 'segunda' },
+        { key: 'ter', name: 'terça' },
+        { key: 'qua', name: 'quarta' },
+        { key: 'qui', name: 'quinta' },
+        { key: 'sex', name: 'sexta' },
+        { key: 'sab', name: 'sábado' }
+    ];
+
+    const escapeXml = (str) => {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    };
+
+    const formatTime = (timeStr, isEnd = false, startStr = '') => {
+        if (!timeStr || timeStr.length < 4) return isEnd ? "23:59" : "00:00";
+        const hh = timeStr.substring(0, 2);
+        const mm = timeStr.substring(2, 4);
+        
+        // Se for término e for 00:00 (com início > 00:00) ou 23:59/24:00, vira 23:59
+        if (isEnd && ((hh === "00" && mm === "00" && startStr && startStr !== "000000") || (hh === "24" && mm === "00") || (hh === "23" && mm === "59"))) {
+            return "23:59";
+        }
+        return `${hh}:${mm}`;
+    };
+
+    const mergeCheck = document.getElementById('mergeSubtitleCheckXTTV');
+    const mergeSub = mergeCheck ? mergeCheck.checked : false;
+
+    XTTV_DAYS.forEach(day => {
+        // Obter os programas ativos do canal selecionado que passam neste dia
+        const dayPrograms = programmes.filter(p => 
+            !p.isArchived && 
+            p.channelId === (channel ? channel.id : selectedChannelId) &&
+            p.days && p.days.includes(day.key)
+        );
+
+        // Ordenar por horário de início cronológico
+        dayPrograms.sort((a, b) => parseTimeToMin(a.start) - parseTimeToMin(b.start));
+
+        dayPrograms.forEach((p, idx) => {
+            const startFormatted = formatTime(p.start, false);
+            let stopFormatted = "";
+            if (p.stop && p.stop.length >= 4) {
+                stopFormatted = formatTime(p.stop, true, p.start);
+            } else if (idx < dayPrograms.length - 1 && dayPrograms[idx + 1].start) {
+                stopFormatted = formatTime(dayPrograms[idx + 1].start, false);
+            } else {
+                stopFormatted = "23:59";
+            }
+
+            const resolvedSubTitle = (p.dailySubtitles && p.dailySubtitles[day.key]) || p.subTitle;
+            let finalTitle = p.title || 'Sem Título';
+            if (mergeSub && resolvedSubTitle) {
+                finalTitle = `${finalTitle} - ${resolvedSubTitle}`;
+            }
+
+            xml += `  <programa dia="${day.name}" inicio="${startFormatted}" fim="${stopFormatted}">${escapeXml(finalTitle)}</programa>\n`;
+        });
+    });
+
+    xml += `</programacao>`;
+    return xml;
+}
+
 window.handleExportDownload = function() {
     if (channels.length === 0) return window.customAlert("Nenhum dado para exportar.");
     
@@ -1310,6 +1542,16 @@ window.handleExportDownload = function() {
             // Aba de projeto usa apenas o nome do projeto (sem data/hora)
             fileName = `${safeName || 'projeto'}.xml`;
         }
+    } else if (exportActiveTab === 'others') {
+        const channelSelect = document.getElementById('exportOthersChannel');
+        const targetChannelId = channelSelect ? channelSelect.value : selectedChannelId;
+        const channel = channels.find(c => c.id === targetChannelId) || channels[0];
+
+        if (!channel) return window.customAlert("Selecione um canal válido para exportar.");
+
+        xmlContent = generateXTTVXML(channel.id);
+        const safeChannelName = channel.displayName.replace(/[^a-z0-9]/gi, '-');
+        fileName = `${safeChannelName || 'grade'}-xttv.xml`;
     } else {
         xmlContent = generateStandardXML(exportDaysToGenerate);
         fileName = `epg_standard_${exportDaysToGenerate}dias.xml`;
@@ -1606,91 +1848,340 @@ window.customAlert = function(msg) {
     `;
 };
 
+// --- Persistência de Dados (IndexedDB com fallback para LocalStorage) ---
+const DB_NAME = 'EPGStudioStorageDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'project_state';
+const STORAGE_KEY = 'epg_studio_active_project';
+let isStorageLoaded = false;
+let saveStateTimeout = null;
+
+function openStorageDB() {
+    return new Promise((resolve) => {
+        if (!window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        } catch (err) {
+            resolve(null);
+        }
+    });
+}
+
+async function saveCurrentState() {
+    const payload = {
+        projectName: projectName || "Novo Projeto",
+        projectLastUpdate: projectLastUpdate || "",
+        channels: Array.isArray(channels) ? channels : [],
+        programmes: Array.isArray(programmes) ? programmes : [],
+        selectedChannelId: selectedChannelId || null,
+        currentDay: currentDay || 'seg',
+        currentView: currentView || 'grid',
+        timestamp: Date.now()
+    };
+
+    try {
+        const db = await openStorageDB();
+        if (db) {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            store.put(payload, 'active_project');
+        } else {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        }
+    } catch (e) {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } catch (err) {
+            console.warn("Aviso ao persistir estado:", err);
+        }
+    }
+}
+
+function scheduleSaveCurrentState() {
+    if (!isStorageLoaded) return;
+    if (saveStateTimeout) clearTimeout(saveStateTimeout);
+    saveStateTimeout = setTimeout(() => {
+        saveCurrentState();
+    }, 400);
+}
+
+async function loadSavedState() {
+    try {
+        const db = await openStorageDB();
+        let saved = null;
+        if (db) {
+            saved = await new Promise((resolve) => {
+                try {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.get('active_project');
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                } catch (e) {
+                    resolve(null);
+                }
+            });
+        }
+        if (!saved) {
+            const local = localStorage.getItem(STORAGE_KEY);
+            if (local) {
+                try { saved = JSON.parse(local); } catch (e) {}
+            }
+        }
+
+        if (saved && typeof saved === 'object') {
+            const hasChannels = Array.isArray(saved.channels) && saved.channels.length > 0;
+            const hasProgrammes = Array.isArray(saved.programmes) && saved.programmes.length > 0;
+
+            if (hasChannels || hasProgrammes) {
+                channels = saved.channels || [];
+                programmes = saved.programmes || [];
+                projectName = saved.projectName || "Novo Projeto";
+                projectLastUpdate = saved.projectLastUpdate || "";
+                currentDay = saved.currentDay || 'seg';
+                currentView = saved.currentView || 'grid';
+
+                if (channels.length > 0) {
+                    const exists = channels.some(c => c.id === saved.selectedChannelId);
+                    selectedChannelId = exists ? saved.selectedChannelId : channels[0].id;
+                } else {
+                    selectedChannelId = null;
+                }
+
+                const welcome = document.getElementById("welcomeScreen");
+                if (welcome) welcome.setAttribute('data-started', 'true');
+                return true;
+            }
+        }
+    } catch (e) {
+        console.error("Erro ao carregar dados salvos:", e);
+    }
+    return false;
+}
+
 function handleImport(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(event.target.result, "application/xml");
-        
-        // Importa metadados do projeto
-        const projTag = xmlDoc.querySelector("project");
-        if (projTag) {
-            projectName = projTag.getAttribute("name") || "Projeto Importado";
-            projectLastUpdate = projTag.getAttribute("date") || "";
-        } else {
-            // Se não tiver tag de projeto, usa o nome do arquivo (sem extensão)
-            projectName = file.name.replace(/\.[^/.]+$/, "");
-            projectLastUpdate = "";
-        }
-
-        channels = Array.from(xmlDoc.querySelectorAll("channel")).map(ch => ({
-            id: ch.getAttribute("id"),
-            displayName: ch.querySelector("display-name")?.textContent || "Canal",
-            icon: ch.querySelector("icon")?.getAttribute("src") || "",
-            date: ch.querySelector("date")?.textContent || ""
-        }));
-
-        // Importa tanto <programme> quanto <aprogramme>
-        const progTags = Array.from(xmlDoc.querySelectorAll("programme"));
-        const archiveTags = Array.from(xmlDoc.querySelectorAll("aprogramme"));
-        
-        const allProgs = [...progTags.map(p => ({ p, isArchived: false })), ...archiveTags.map(p => ({ p, isArchived: true }))];
-
-        programmes = allProgs.map((item, idx) => {
-            const p = item.p;
+    reader.onload = async (event) => {
+        try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(event.target.result, "application/xml");
             
-            // Daily Subtitles Parsing
-            const dailySubtitles = {};
-            const stDayEl = p.querySelector("st-day");
-            if (stDayEl) {
-                DAYS.forEach(d => {
-                    const dayEl = stDayEl.querySelector(d.key);
-                    if (dayEl) dailySubtitles[d.key] = dayEl.textContent;
-                });
+            const parserError = xmlDoc.querySelector("parsererror");
+            if (parserError) {
+                return window.customAlert("O arquivo selecionado não é um XML válido ou contém erros de formatação.");
             }
 
-            // Daily Descriptions Parsing
-            const dailyDescriptions = {};
-            const descDayEl = p.querySelector("desc-day");
-            if (descDayEl) {
-                DAYS.forEach(d => {
-                    const dayEl = descDayEl.querySelector(d.key);
-                    if (dayEl) dailyDescriptions[d.key] = dayEl.textContent;
-                });
+            // LIMPA E SOBRESCREVE TODAS AS IMPORTAÇÕES ANTERIORES
+            channels = [];
+            programmes = [];
+
+            // 1. Metadados do projeto
+            const projTag = xmlDoc.querySelector("project");
+            if (projTag) {
+                projectName = projTag.getAttribute("name") || "Projeto Importado";
+                projectLastUpdate = projTag.getAttribute("date") || "";
+            } else {
+                projectName = file.name.replace(/\.[^/.]+$/, "");
+                projectLastUpdate = "";
             }
 
-            return {
-                id: `p-${Date.now()}-${idx}`,
-                channelId: p.getAttribute("channel"),
-                start: (p.getAttribute("start") || "").substring(0, 6),
-                stop: (p.getAttribute("stop") || "").substring(0, 6),
-                title: p.querySelector("title")?.textContent || "Sem Título",
-                subTitle: p.querySelector("sub-title")?.textContent || "",
-                dailySubtitles: dailySubtitles,
-                desc: p.querySelector("desc")?.textContent || "",
-                dailyDescriptions: dailyDescriptions,
-                iconSrc: p.querySelector("icon")?.getAttribute("src") || "",
-                days: (p.querySelector("weekday")?.getAttribute("days") || "").split(",").map(d => d.trim()).filter(d => d),
-                rating: (p.querySelector("rating value")?.textContent || "L").toUpperCase(),
-                isArchived: item.isArchived
+            // 2. Extração de canais
+            const channelNodes = Array.from(xmlDoc.querySelectorAll("channel"));
+            channels = channelNodes.map(ch => ({
+                id: ch.getAttribute("id") || generateId(),
+                displayName: ch.querySelector("display-name")?.textContent || ch.getAttribute("id") || "Canal",
+                icon: ch.querySelector("icon")?.getAttribute("src") || "",
+                date: ch.querySelector("date")?.textContent || ""
+            }));
+
+            // 3. Extração de programas (programme, aprogramme ou formato XTTV programa)
+            const progTags = Array.from(xmlDoc.querySelectorAll("programme"));
+            const archiveTags = Array.from(xmlDoc.querySelectorAll("aprogramme"));
+            const xttvPrograms = Array.from(xmlDoc.querySelectorAll("programa"));
+
+            const extractTime = (rawTime) => {
+                if (!rawTime) return "000000";
+                const clean = rawTime.trim().split(' ')[0];
+                if (clean.length >= 14) {
+                    // Padrão XMLTV YYYYMMDDHHMMSS
+                    return clean.substring(8, 14);
+                }
+                if (clean.length >= 6) {
+                    // Formato Master HHMMSS
+                    return clean.substring(0, 6);
+                }
+                return clean.padEnd(6, '0');
             };
-        });
 
-        if (channels.length > 0) {
-          selectedChannelId = channels[0].id;
-        } else {
-          selectedChannelId = null;
+            if (progTags.length > 0 || archiveTags.length > 0) {
+                const allProgs = [
+                    ...progTags.map(p => ({ p, isArchived: false })),
+                    ...archiveTags.map(p => ({ p, isArchived: true }))
+                ];
+
+                // Se não havia tags <channel> explícitas no XML, cria a partir dos programas
+                if (channels.length === 0) {
+                    const uniqueChIds = [...new Set(allProgs.map(item => item.p.getAttribute("channel")).filter(Boolean))];
+                    channels = uniqueChIds.map(chId => ({
+                        id: chId,
+                        displayName: chId,
+                        icon: "",
+                        date: ""
+                    }));
+                }
+
+                programmes = allProgs.map((item, idx) => {
+                    const p = item.p;
+                    
+                    // Daily Subtitles Parsing
+                    const dailySubtitles = {};
+                    const stDayEl = p.querySelector("st-day");
+                    if (stDayEl) {
+                        DAYS.forEach(d => {
+                            const dayEl = stDayEl.querySelector(d.key);
+                            if (dayEl) dailySubtitles[d.key] = dayEl.textContent;
+                        });
+                    }
+
+                    // Daily Descriptions Parsing
+                    const dailyDescriptions = {};
+                    const descDayEl = p.querySelector("desc-day");
+                    if (descDayEl) {
+                        DAYS.forEach(d => {
+                            const dayEl = descDayEl.querySelector(d.key);
+                            if (dayEl) dailyDescriptions[d.key] = dayEl.textContent;
+                        });
+                    }
+
+                    // Weekdays parsing
+                    let days = (p.querySelector("weekday")?.getAttribute("days") || "").split(",").map(d => d.trim()).filter(d => d);
+                    if (days.length === 0) {
+                        const rawStart = p.getAttribute("start") || "";
+                        const cleanStart = rawStart.trim().split(' ')[0];
+                        if (cleanStart.length >= 8) {
+                            const y = parseInt(cleanStart.substring(0, 4));
+                            const m = parseInt(cleanStart.substring(4, 6)) - 1;
+                            const d = parseInt(cleanStart.substring(6, 8));
+                            const dt = new Date(y, m, d);
+                            const dayMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+                            const dayKey = dayMap[dt.getDay()];
+                            if (dayKey) days = [dayKey];
+                        }
+                        if (days.length === 0) {
+                            days = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+                        }
+                    }
+
+                    return {
+                        id: `p-${Date.now()}-${idx}`,
+                        channelId: p.getAttribute("channel") || (channels[0]?.id || "ch1"),
+                        start: extractTime(p.getAttribute("start")),
+                        stop: extractTime(p.getAttribute("stop")),
+                        title: p.querySelector("title")?.textContent || "Sem Título",
+                        subTitle: p.querySelector("sub-title")?.textContent || "",
+                        dailySubtitles: dailySubtitles,
+                        desc: p.querySelector("desc")?.textContent || "",
+                        dailyDescriptions: dailyDescriptions,
+                        iconSrc: p.querySelector("icon")?.getAttribute("src") || "",
+                        days: days,
+                        rating: (p.querySelector("rating value")?.textContent || "L").toUpperCase(),
+                        isArchived: item.isArchived
+                    };
+                });
+            } else if (xttvPrograms.length > 0) {
+                // Compatibilidade com importação de formato XTTV
+                const baseChannelName = file.name.replace(/\.[^/.]+$/, "").replace(/-xttv$/i, "");
+                const chId = baseChannelName.toLowerCase().replace(/[^a-z0-9]/g, '_') || "canal_1";
+                if (channels.length === 0) {
+                    channels = [{
+                        id: chId,
+                        displayName: baseChannelName,
+                        icon: "",
+                        date: ""
+                    }];
+                }
+
+                const dayMapRev = {
+                    'domingo': 'dom', 'dom': 'dom',
+                    'segunda': 'seg', 'seg': 'seg',
+                    'terça': 'ter', 'terca': 'ter', 'ter': 'ter',
+                    'quarta': 'qua', 'qua': 'qua',
+                    'quinta': 'qui', 'qui': 'qui',
+                    'sexta': 'sex', 'sex': 'sex',
+                    'sábado': 'sab', 'sabado': 'sab', 'sab': 'sab'
+                };
+
+                programmes = xttvPrograms.map((pr, idx) => {
+                    const diaAttr = (pr.getAttribute("dia") || "segunda").toLowerCase().trim();
+                    const startAttr = (pr.getAttribute("inicio") || "00:00").replace(':', '') + "00";
+                    const stopAttr = (pr.getAttribute("fim") || "00:00").replace(':', '') + "00";
+                    const titleText = pr.textContent || "Sem Título";
+                    const dayKey = dayMapRev[diaAttr] || 'seg';
+
+                    return {
+                        id: `p-${Date.now()}-${idx}`,
+                        channelId: channels[0].id,
+                        start: startAttr,
+                        stop: stopAttr,
+                        title: titleText,
+                        subTitle: "",
+                        dailySubtitles: {},
+                        desc: "",
+                        dailyDescriptions: {},
+                        iconSrc: "",
+                        days: [dayKey],
+                        rating: "L",
+                        isArchived: false
+                    };
+                });
+            }
+
+            if (channels.length > 0) {
+                selectedChannelId = channels[0].id;
+            } else {
+                selectedChannelId = null;
+            }
+
+            const welcome = document.getElementById("welcomeScreen");
+            if (welcome) welcome.setAttribute('data-started', 'true');
+
+            // Salva e sobrescreve o armazenamento persistente imediatamente
+            await saveCurrentState();
+
+            render();
+            window.customAlert(`Arquivo "${file.name}" importado com sucesso! A grade anterior foi substituída pela nova importação.`);
+        } catch (err) {
+            console.error("Erro ao importar XML:", err);
+            window.customAlert("Ocorreu um erro ao processar o arquivo XML: " + err.message);
+        } finally {
+            // Limpa o valor do input para permitir selecionar o mesmo arquivo novamente
+            e.target.value = "";
         }
-        render();
     };
     reader.readAsText(file);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const fileInput = document.getElementById('fileInput');
     if (fileInput) fileInput.addEventListener('change', handleImport);
+
+    // Restaura os dados salvos ao carregar/recarregar a página
+    await loadSavedState();
+    isStorageLoaded = true;
+
     setInterval(() => {
         if (currentView === 'weekly') {
             const line = document.querySelector('.time-line');
@@ -1701,5 +2192,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }, 60000);
+    window.addEventListener('resize', render);
     render();
 });
