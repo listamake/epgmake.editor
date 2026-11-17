@@ -588,7 +588,7 @@ function renderGrid(container) {
     `;
     
     for(let i=0; i<24; i++) {
-        headerHtml += `<div class="min-w-[${PX_HOUR}px] p-2 text-[10px] text-[#a1a1a6] border-l border-[#2c2c2e] whitespace-nowrap">${String(i).padStart(2,'0')}:00</div>`;
+        headerHtml += `<div style="min-width: ${PX_HOUR}px" class="p-2 text-[10px] text-[#a1a1a6] border-l border-[#2c2c2e] whitespace-nowrap">${String(i).padStart(2,'0')}:00</div>`;
     }
     headerHtml += `</div></div>`;
     
@@ -2174,7 +2174,7 @@ function handleImport(e) {
     reader.readAsText(file);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initApp() {
     const fileInput = document.getElementById('fileInput');
     if (fileInput) fileInput.addEventListener('change', handleImport);
 
@@ -2194,4 +2194,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 60000);
     window.addEventListener('resize', render);
     render();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
